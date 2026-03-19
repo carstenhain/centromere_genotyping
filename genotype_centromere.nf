@@ -4,6 +4,25 @@ nextflow.enable.dsl=2
 
 params.samplesheet = "samplesheet.tsv"
 
+// Help message
+def helpMessage() {
+    log.info"""
+    Usage:
+    nextflow run genotype_centromere.nf --samplesheet <path>
+
+    Required arguments:
+      --samplesheet PATH    Path to the TSV samplesheet file
+
+    Optional arguments:
+      --help                Show this help message and exit
+
+    The samplesheet should be a TSV file with columns:
+      - NAME: Sample identifier (string)
+      - FILE_PATH: Path to the input file (string)
+      - TYPE: Type of the input file (string, e.g., 'bam', 'cram', 'fastq', 'dbg', gzipped fastq should be treated as 'fastq')
+    """.stripIndent()
+}
+
 process convertToFasta {
     tag "${name}"
 
