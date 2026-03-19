@@ -19,7 +19,7 @@ def helpMessage() {
     The samplesheet should be a TSV file with columns:
       - NAME: Sample identifier (string)
       - FILE_PATH: Path to the input file (string)
-      - TYPE: Type of the input file (string, e.g., 'bam', 'cram', 'fastq', 'dbg', gzipped fastq should be treated as 'fastq')
+      - TYPE: Type of the input file (string, e.g., 'bam', 'cram', 'fasta', 'fastq', 'dbg', gzipped fastq should be treated as 'fastq')
     """.stripIndent()
 }
 
@@ -105,14 +105,17 @@ workflow {
         .map { row -> tuple(row.NAME, row.FILE_PATH, row.TYPE) }
         .branch {
             reads: it[2] in ['bam', 'cram', 'fastq']
+            fasta: it[2] == 'fasta'
             dbg:   it[2] == 'dbg'
         }
         .set { branched_ch }
 
     reads_ch = branched_ch.reads.map { name, file_path, type -> tuple(name, file(file_path)) }
+    fasta_ch = branched_ch.fasta.map { name, file_path, type -> tuple(name, file(file_path)) }
     dbg_ch   = branched_ch.dbg.map   { name, file_path, type -> tuple(name, file(file_path)) }
 
-    convertToFasta(reads_ch) \
+    convertToFasta(reads_ch)
+        .mix(fasta_ch) \
         | splitReadsIntoFastaChunks \
         | transpose \
         | jellyfishCount \
