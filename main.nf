@@ -12,7 +12,7 @@ process RUN_PROCESS {
 
     script:
     """
-    python3 ${projectDir}/process.py --name "${name}" --file_path "${file_path}"
+    python3 ${projectDir}/scripts/process.py --name "${name}" --file_path "${file_path}"
     """
 }
 
