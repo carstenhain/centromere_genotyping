@@ -1,2 +1,3 @@
 NAME;FILE_PATH;TYPE
 FASTQ;/scratch/hain/centromere/tool_data/ERR016025_1.fastq.gz;fastq
+OTHER;/scratch/hain/centromere/tool_data/ERR016025_2.fastq.gz;fastq

@@ -136,7 +136,7 @@ process jellyfish {
         -s ${params.kmer_fasta} \\
         -o ${name}_${chunk_file.baseName}_query_results.txt
     # remove jf database to save space
-    rm ${chunk_file.baseName}.jf
+    # rm ${chunk_file.baseName}.jf
     """
 }
 
@@ -152,6 +152,20 @@ process DBG_TO_KMER_TABLE {
     script:
     """
     python3 ${projectDir}/scripts/dbg_to_kmer_table.py --name "${name}" --file_path "${file_path}" --output "${name}_kmer_table.tsv"
+    """
+}
+
+process MERGE_KMER_COUNTS {
+    input:
+    path(samplesheet)
+    path(jellyfish_output_list)
+
+    output:
+    path("reads_kmer_counts.tsv")
+
+    script:
+    """
+    python3 ${projectDir}/scripts/merge_kmer_counts.py --samplesheet ${samplesheet} --jellyfish_output_list ${jellyfish_output_list} > reads_kmer_counts.tsv
     """
 }
 
@@ -176,7 +190,16 @@ workflow {
         .transpose() // Flatten the list of chunk files into separate emissions
         .set { chunks_ch } // Count kmers in each chunk 
     
-    jellyfish(chunks_ch) 
+    def jellyfish_results_ch = jellyfish(chunks_ch)
+
+    def jellyfish_output_list_ch = jellyfish_results_ch
+        .map { name, output_file -> output_file.toString() }
+        .collectFile(name: 'jellyfish_outputs.txt', newLine: true)
+
+    MERGE_KMER_COUNTS(
+        channel.fromPath(params.samplesheet),
+        jellyfish_output_list_ch
+    )
 
     // Process dbg files
     DBG_TO_KMER_TABLE(branched_ch.dbg.map { name, file_path, type -> tuple(name, file_path) })
