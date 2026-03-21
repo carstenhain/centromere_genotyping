@@ -1,7 +1,28 @@
 import argparse
 import os
-import pandas as pd
-from tqdm import tqdm
+import pandas as pd # type: ignore
+from tqdm import tqdm # type: ignore
+
+def reverse_complement(dna_sequence):
+    """
+        Computes the reverse complement of a base sequence given in upper case
+
+        Parameters:
+        dna_sequence:                     DNA sequence in upper case (only ATCG)
+
+        Returns:
+        reverse complement of dna_sequence
+    """
+    complement = {
+        'A': 'T',
+        'T': 'A',
+        'C': 'G',
+        'G': 'C'
+    }
+
+    complement_sequence = ''.join(complement[base] for base in dna_sequence)
+    reverse_complement_sequence = complement_sequence[::-1]
+    return reverse_complement_sequence
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,7 +49,7 @@ def main():
             shards[sample_name] = [name]
 
         ### append the kmer counts
-        kmer_counts.append(pd.read_csv(line.strip(), sep=" ", header=None, names=["KMER", name]).set_index("KMER"))
+        kmer_counts.append(pd.read_csv(line.strip(), sep=" ", header=None, names=["KMER", name]).sort_values(by="KMER").set_index("KMER"))
     
     ### concat shards into a single dataframe
     kmer_counts_df = pd.concat(kmer_counts, axis=1)
@@ -37,8 +58,23 @@ def main():
     for sample in shards:
         kmer_counts_df[sample] = kmer_counts_df[shards[sample]].sum(axis=1)
 
-    ### write merged columns to file, include index as it is the kmer column
-    kmer_counts_df[shards.keys()].to_csv("reads_kmer_counts.tsv", sep="\t", index=True)
+    ### subset to complete samples only
+    kmer_df = kmer_counts_df[shards.keys()].copy()
+    ### add kmer as columns
+    kmer_df["KMER"] = kmer_df.index
+    kmer_df.reset_index(drop=True, inplace=True)
+    ### drop duplciates
+    kmer_df = kmer_df.drop_duplicates(subset="KMER")
+    
+    ### build copy and convert kmer into their reverse complement form
+    rc_kmer_df = kmer_df.copy()
+    rc_kmer_df["KMER"] = rc_kmer_df["KMER"].apply(reverse_complement)
+    
+    ### concat, sort and set KMER as index
+    sorted_complete_kmer_df = pd.concat([kmer_df, rc_kmer_df], axis=0).sort_values(by="KMER").set_index("KMER")
+
+    ### save to file
+    sorted_complete_kmer_df.to_csv("reads_kmer_counts.tsv", sep="\t", index=True)
         
 if __name__ == "__main__":
     main()

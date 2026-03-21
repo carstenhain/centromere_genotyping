@@ -3,6 +3,7 @@
 nextflow.enable.dsl=2
 
 params.samplesheet = "samplesheet.csv"
+params.outdir = null
 params.kmer_fasta = "/g/korbel/hain/centromere_genotyping_tool/centromere_genotyping/data/all_tagging_kmers.fasta"
 params.reference_fasta_for_cram = "/scratch/hain/centromere/tool_data/GRCh38_full_analysis_set_plus_decoy_hla.fa"
 
@@ -10,13 +11,14 @@ params.reference_fasta_for_cram = "/scratch/hain/centromere/tool_data/GRCh38_ful
 def helpMessage() {
     log.info"""
     Usage:
-    nextflow run genotype_centromere.nf --samplesheet <path>
+        nextflow run genotype_centromere.nf --samplesheet <path> --outdir <path>
 
     Required arguments:
-      --samplesheet PATH    Path to the CSV samplesheet file
+        --samplesheet PATH    Path to the CSV samplesheet file
+        --outdir PATH         Directory where result files are stored
 
     Optional arguments:
-      --help                Show this help message and exit
+        --help                Show this help message and exit
 
     The samplesheet should be a CSV file with columns:
       - NAME: Sample identifier (string)
@@ -151,7 +153,29 @@ process DBG_TO_KMER_TABLE {
 
     script:
     """
-    python3 ${projectDir}/scripts/dbg_to_kmer_table.py --name "${name}" --file_path "${file_path}" --output "${name}_kmer_table.tsv"
+    ### rewrite fasta to a list of kmers
+    awk 'NR % 2 == 0' "${params.kmer_fasta}" > kmer_list.txt
+
+    ### create local uncompressed copy of the dbg file in task work directory
+    gzip -dc "${file_path}" > dbg.uncompressed.fa
+
+    ### subset dbg to those contigs with one matching kmers and write to new file
+    pv dbg.uncompressed.fa | grep -B 1 -f kmer_list.txt > "${name}".kmers.zgrep.txt
+    ### pv -f dbg.uncompressed.fa 2> pv.log | grep -B 1 -f kmer_list.txt > ${name}.kmers.zgrep.txt
+    ### pv -f dbg.uncompressed.fa | stdbuf -oL grep -B 1 -f kmer_list.txt > ${name}.kmers.zgrep.txt
+    ### cat dbg.uncompressed.fa | stdbuf -i0 -o0 -e0 grep -B 1 -f kmer_list.txt > ${name}.kmers.zgrep.txt
+    
+
+    ### call python file to convert the zgrep output into a kmer table
+    python3 ${projectDir}/scripts/dbg_to_kmer_table.py \\
+        --name "${name}" \\
+        --zgrep_file "${name}.kmers.zgrep.txt"  \\
+        --kmer_list kmer_list.txt \\
+        --output "${name}_kmer_table.tsv"
+
+    ### remove kmer list and uncompressed dbg file to save space
+    # rm kmer_list.txt
+    # dbg.uncompressed.fa
     """
 }
 
@@ -165,11 +189,55 @@ process MERGE_KMER_COUNTS {
 
     script:
     """
-    python3 ${projectDir}/scripts/merge_kmer_counts.py --samplesheet ${samplesheet} --jellyfish_output_list ${jellyfish_output_list} > reads_kmer_counts.tsv
+    python3 ${projectDir}/scripts/merge_kmer_counts.py \\
+        --samplesheet ${samplesheet} \\
+        --jellyfish_output_list ${jellyfish_output_list} > reads_kmer_counts.tsv
+    """
+}
+
+process FINAL_KMER_MERGE {
+    publishDir "${params.outdir}", mode: 'copy', overwrite: true
+
+    input:
+    path(kmer_subtable_list)
+
+    output:
+    path("final_kmer_merged.tsv")
+
+    script:
+    """
+    python3 ${projectDir}/scripts/final_kmer_merge.py \
+        --kmer_subtable_list ${kmer_subtable_list} > final_kmer_merged.tsv
+    """
+}
+
+process GENOTYPE {
+    publishDir "${params.outdir}", mode: 'copy', overwrite: true
+
+    input:
+    path(samplesheet)
+    path(final_kmer_merged)
+
+    output:
+    path("genotype_input_manifest.txt")
+
+    script:
+    """
+    {
+        echo "samplesheet=${samplesheet}"
+        echo "final_kmer_merged=${final_kmer_merged}"
+    } > genotype_input_manifest.txt
     """
 }
 
 workflow {
+
+    if (!params.outdir) {
+        error "Missing required parameter: --outdir"
+    }
+    if (!params.samplesheet) {
+        error "Missing required parameter: --samplesheet"
+    }
 
     def input_ch = channel
         .fromPath(params.samplesheet)
@@ -190,17 +258,29 @@ workflow {
         .transpose() // Flatten the list of chunk files into separate emissions
         .set { chunks_ch } // Count kmers in each chunk 
     
+    // run jellyfish count and query and save the output files into a list
     def jellyfish_results_ch = jellyfish(chunks_ch)
-
     def jellyfish_output_list_ch = jellyfish_results_ch
         .map { name, output_file -> output_file.toString() }
         .collectFile(name: 'jellyfish_outputs.txt', newLine: true)
 
-    MERGE_KMER_COUNTS(
+    // merge the jellyfish output files into a single table of kmer counts for the reads
+    def reads_kmer_counts_ch = MERGE_KMER_COUNTS(
         channel.fromPath(params.samplesheet),
         jellyfish_output_list_ch
     )
 
-    // Process dbg files
-    DBG_TO_KMER_TABLE(branched_ch.dbg.map { name, file_path, type -> tuple(name, file_path) })
+    // Process dbg files into kmer tables
+    def dbg_kmer_tables_ch = DBG_TO_KMER_TABLE(branched_ch.dbg.map { name, file_path, type -> tuple(name, file_path) })
+
+    // write paths of kmer tables from reads and dbg files into a single file for merging 
+    def kmer_table_list_ch = reads_kmer_counts_ch
+        .map { reads_table -> reads_table.toString() }
+        .mix(dbg_kmer_tables_ch.map { name, dbg_table -> dbg_table.toString() })
+        .collectFile(name: 'kmer_table_list.txt', newLine: true)
+
+    // merge kmer tables from different data types together into a single table for genotyping
+    def final_kmer_merged_ch = FINAL_KMER_MERGE(kmer_table_list_ch)
+
+
 }
