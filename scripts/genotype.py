@@ -62,7 +62,11 @@ def main():
             
             ### get number of kmers and number of positive kmers
             c_kmers = c_subset.shape[0]
-            c_positive = (c_subset > 0.01).sum()
+            ### skip clusters with very few tagging kmers
+            if c_kmers < 100:
+                c_positive = 0
+            else:   
+                c_positive = (c_subset > 0.01).sum()
             
             ### calculate fraction and add information about cluster and chromosome
             result_series = c_positive / c_kmers
@@ -111,6 +115,8 @@ def main():
         results.append(result_series)
 
     results_df = pd.DataFrame(results)
+
+    results_df.to_csv("centromere_genotyping_results.tsv", sep="\t", index=False)
 
     formatted_results = []
 

@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 
 params.samplesheet = "samplesheet.csv"
 params.outdir = null
-params.kmer_fasta = "/g/korbel/hain/centromere_genotyping_tool/centromere_genotyping/data/all_tagging_kmers.fasta"
+params.kmer_fasta = "/g/korbel/hain/centromere_genotyping_tool/centromere_genotyping/data/all_tagging_kmers.fasta.gz"
 params.reference_fasta_for_cram = "/scratch/hain/centromere/tool_data/GRCh38_full_analysis_set_plus_decoy_hla.fa"
 
 // Help message
@@ -154,7 +154,7 @@ process DBG_TO_KMER_TABLE {
     script:
     """
     ### rewrite fasta to a list of kmers
-    awk 'NR % 2 == 0' "${params.kmer_fasta}" > kmer_list.txt
+    zcat "${params.kmer_fasta}" | awk 'NR % 2 == 0' > kmer_list.txt
 
     ### create local uncompressed copy of the dbg file in task work directory
     gzip -dc "${file_path}" > dbg.uncompressed.fa
@@ -224,7 +224,7 @@ process GENOTYPE {
     """
     python3 ${projectDir}/scripts/genotype.py \\
         --sample_kmer_table ${final_kmer_merged} \\
-        --kmer_annot_tsv ${projectDir}/data/all_tagging_kmers.tsv \\
+        --kmer_annot_tsv ${projectDir}/data/all_tagging_kmers.tsv.gz \\
         --model_directory ${projectDir}/models/
     """
 }
