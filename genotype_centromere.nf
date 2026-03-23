@@ -215,18 +215,17 @@ process GENOTYPE {
     publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
     input:
-    path(samplesheet)
     path(final_kmer_merged)
 
     output:
-    path("genotype_input_manifest.txt")
+    path("centromere_genotyping.tsv")
 
     script:
     """
-    {
-        echo "samplesheet=${samplesheet}"
-        echo "final_kmer_merged=${final_kmer_merged}"
-    } > genotype_input_manifest.txt
+    python3 ${projectDir}/scripts/genotype.py \\
+        --sample_kmer_table ${final_kmer_merged} \\
+        --kmer_annot_tsv ${projectDir}/data/all_tagging_kmers.tsv \\
+        --model_directory ${projectDir}/models/
     """
 }
 
@@ -282,5 +281,6 @@ workflow {
     // merge kmer tables from different data types together into a single table for genotyping
     def final_kmer_merged_ch = FINAL_KMER_MERGE(kmer_table_list_ch)
 
-
+    // run genotype process with samplesheet and merged kmer table
+    GENOTYPE(final_kmer_merged_ch)
 }

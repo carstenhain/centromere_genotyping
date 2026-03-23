@@ -2,3 +2,4 @@ NAME;FILE_PATH;TYPE
 DBG;/scratch/hain/centromere/tool_data/HG00418.unitigs.fa.gz;dbg
 FASTQ;/scratch/hain/centromere/tool_data/ERR016025_1.fastq.gz;fastq
 OTHER;/scratch/hain/centromere/tool_data/ERR016025_2.fastq.gz;fastq
+CRAM;/scratch/hain/centromere/tool_data/HG00418.final.cram;cram
