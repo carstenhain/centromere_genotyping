@@ -135,7 +135,7 @@ process jellyfish {
 
     jellyfish query \\
         ${chunk_file.baseName}.jf \\
-        -s ${params.kmer_fasta} \\
+        -s <(gzip -dc ${projectDir}/data/all_tagging_kmers.fasta.gz) \\
         -o ${name}_${chunk_file.baseName}_query_results.txt
     # remove jf database to save space
     # rm ${chunk_file.baseName}.jf
@@ -154,7 +154,7 @@ process DBG_TO_KMER_TABLE {
     script:
     """
     ### rewrite fasta to a list of kmers
-    zcat "${params.kmer_fasta}" | awk 'NR % 2 == 0' > kmer_list.txt
+    zcat ${projectDir}/data/all_tagging_kmers.fasta.gz | awk 'NR % 2 == 0' > kmer_list.txt
 
     ### create local uncompressed copy of the dbg file in task work directory
     gzip -dc "${file_path}" > dbg.uncompressed.fa

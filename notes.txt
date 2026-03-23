@@ -1,0 +1,4 @@
+HG00105_DBG;/scratch/hain/centromere/tool_data/HG00105.unitigs.fa.gz;dbg
+HG00105_CRAM;/scratch/hain/centromere/tool_data/HG00105.final.cram;cram
+HG00096_DBG;/scratch/hain/centromere/tool_data/HG00096.unitigs.fa.gz;dbg
+HG00096_CRAM;/scratch/hain/centromere/tool_data/HG00096.final.cram;cram
