@@ -52,21 +52,21 @@ def main():
             if pattern.fullmatch(x)
         ]
         
-        ### get fraction of found kmers (kmer count normalized > 0.01) for each cluster
+        ### get fraction of found kmers (kmer count > 2) for each cluster
         for c in cluster:
             
             ### subset kmers to this cluster
-            c_subset = normed_kmer_df.loc[
-                    kmer_annot_df[kmer_annot_df["CLUSTER"] == c]["KMER"].tolist()
+            c_subset = kmer_df.loc[
+                    kmer_df[kmer_df["CLUSTER"] == c]["KMER"].tolist()
                 ]
             
             ### get number of kmers and number of positive kmers
             c_kmers = c_subset.shape[0]
             ### skip clusters with very few tagging kmers
-            if c_kmers < 100:
+            if c_kmers < 10:
                 c_positive = 0
             else:   
-                c_positive = (c_subset > 0.01).sum()
+                c_positive = (c_subset > 2).sum()
             
             ### calculate fraction and add information about cluster and chromosome
             result_series = c_positive / c_kmers

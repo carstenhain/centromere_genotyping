@@ -1,6 +1,6 @@
 import argparse
 import os
-import pandas as pd # type: ignore
+import polars as pl # type: ignore
 from tqdm import tqdm # type: ignore
 
 def reverse_complement(dna_sequence):
@@ -34,10 +34,15 @@ def main():
     args = parser.parse_args()
 
     kmer_counts = []
+    kmer_index = None
     shards = {}
 
     ### Iterate over each shard, parse sample name and add kmer counts to final table, also keep track of which shards belong to which sample in a dictionary
-    jellyfish_files = open(args.jellyfish_output_list).readlines()
+    # read all shards
+    with open(args.jellyfish_output_list, "r") as f:
+        jellyfish_files = [x.strip() for x in f.readlines()]
+
+    # query each shard
     for line in tqdm(jellyfish_files, total=len(jellyfish_files), desc="Loading kmer counts"):
         
         ### parse sample and column name from the file path and store all shards per sample in a dictionary
@@ -48,33 +53,36 @@ def main():
         else:
             shards[sample_name] = [name]
 
-        ### append the kmer counts
-        kmer_counts.append(pd.read_csv(line.strip(), sep=" ", header=None, names=["KMER", name]).sort_values(by="KMER").set_index("KMER"))
-    
+        ### load and append the kmer counts
+        shard_df = pl.read_csv(line.strip(), separator=" ", has_header=False, new_columns=["KMER", name]).sort("KMER")
+        if kmer_index is None:
+            kmer_index = shard_df.select("KMER")
+        kmer_counts.append(shard_df.select(name))
+
     ### concat shards into a single dataframe
-    kmer_counts_df = pd.concat(kmer_counts, axis=1)
+    kmer_counts_df = pl.concat([kmer_index, *kmer_counts], how="horizontal")
 
     ### sum up counts of all shards for each sample 
     for sample in shards:
-        kmer_counts_df[sample] = kmer_counts_df[shards[sample]].sum(axis=1)
+        kmer_counts_df = kmer_counts_df.with_columns(
+            pl.sum_horizontal([pl.col(column).fill_null(0) for column in shards[sample]]).alias(sample)
+        )
 
     ### subset to complete samples only
-    kmer_df = kmer_counts_df[shards.keys()].copy()
-    ### add kmer as columns
-    kmer_df["KMER"] = kmer_df.index
-    kmer_df.reset_index(drop=True, inplace=True)
-    ### drop duplciates
-    kmer_df = kmer_df.drop_duplicates(subset="KMER")
+    kmer_df = kmer_counts_df.select(["KMER", *list(shards.keys())])
+    ### drop duplicates
+    kmer_df = kmer_df.unique(subset=["KMER"], keep="first")
     
     ### build copy and convert kmer into their reverse complement form
-    rc_kmer_df = kmer_df.copy()
-    rc_kmer_df["KMER"] = rc_kmer_df["KMER"].apply(reverse_complement)
+    rc_kmer_df = kmer_df.with_columns(
+        pl.col("KMER").map_elements(reverse_complement, return_dtype=pl.Utf8)
+    )
     
-    ### concat, sort and set KMER as index
-    sorted_complete_kmer_df = pd.concat([kmer_df, rc_kmer_df], axis=0).sort_values(by="KMER").set_index("KMER")
+    ### concat and sort
+    sorted_complete_kmer_df = pl.concat([kmer_df, rc_kmer_df], how="vertical").sort("KMER")
 
     ### save to file
-    sorted_complete_kmer_df.to_csv("reads_kmer_counts.tsv", sep="\t", index=True)
+    sorted_complete_kmer_df.write_csv("reads_kmer_counts.tsv", separator="\t")
         
 if __name__ == "__main__":
     main()
